@@ -1,0 +1,10 @@
+streamlit
+langchain
+langchain-google-genai
+langchain-tavily
+langchain-google-community
+langgraph
+google-api-python-client
+google-auth-oauthlib
+google-auth-httplib2
+langgraph-checkpoint-sqlite
