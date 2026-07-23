@@ -378,19 +378,7 @@ def settings_modal():
 
 with st.sidebar:
     st.header("Side Panel 📑")
-
-    google_api_key = get_secret("GOOGLE_API_KEY")
-    if google_api_key:
-        st.success("GOOGLE_API_KEY loaded from secrets/environment ✅")
-    else:
-        google_api_key = st.text_input(
-            "GOOGLE_API_KEY",
-            type="password",
-            help="Gemini Developer API key. For a deployed app, set this in "
-            "`.streamlit/secrets.toml` (or your host's secret manager) "
-            "instead so visitors never see or need one.",
-        )
-
+  
     st.subheader("Web Search (Tavily)")
     tavily_api_key = get_secret("TAVILY_API_KEY")
     if tavily_api_key:
