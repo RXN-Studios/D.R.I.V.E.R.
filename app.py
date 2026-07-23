@@ -73,7 +73,9 @@ from langchain_google_community import GoogleDriveLoader
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_tavily import TavilySearch
 from langgraph.checkpoint.sqlite import SqliteSaver
-
+import requests
+from google_auth_oauthlib.flow import Flow
+from google.oauth2.credentials import Credentials
 # =============================================================================
 # Constants
 # =============================================================================
@@ -126,87 +128,21 @@ tool output. For web results, cite the URL.
 # Google Drive: credentials + a real "search by query" tool
 # =============================================================================
 
-def get_drive_credentials(credentials_path: str, token_path: str, scopes: List[str]):
+def build_drive_search_tool(creds_json_str: str, num_results: int):
     """
-    Resolves Google Drive OAuth credentials in this priority order:
-
-      1. `st.secrets["GOOGLE_DRIVE_TOKEN_JSON"]` — a pre-generated token (the
-         *contents* of a token.json produced by an earlier local run). This
-         is what makes a headless/hosted deployment possible: run this app
-         locally ONCE, approve the browser consent, then paste the
-         resulting token.json's contents into your host's secrets under
-         this key. No browser is needed on the server after that.
-      2. A cached `token_path` file on local disk (same-machine deployments).
-      3. The interactive "installed app" OAuth flow via `credentials_path`,
-         which opens a local browser tab — only works when this process and
-         the browser share the same machine (e.g. `streamlit run` on your
-         own laptop).
-
-    A refreshed/renewed token is written back to `token_path` when possible
-    (skipped silently on read-only filesystems some hosts use — Drive
-    search still works for the process lifetime, it just re-authenticates
-    next boot).
+    Factory that returns a LangChain tool using live user session credentials.
     """
-    from google.auth.transport.requests import Request
-    from google.oauth2.credentials import Credentials
-    from google_auth_oauthlib.flow import InstalledAppFlow
-
-    creds = None
-    token_file = Path(token_path)
-
-    # 1. Pre-generated token supplied via secrets (headless deployment path).
-    token_secret = get_secret("GOOGLE_DRIVE_TOKEN_JSON")
-    if token_secret:
-        creds = Credentials.from_authorized_user_info(json.loads(token_secret), scopes)
-
-    # 2. Cached token file from a previous local run.
-    if not creds and token_file.exists():
-        creds = Credentials.from_authorized_user_file(str(token_file), scopes)
-
-    if not creds or not creds.valid:
-        if creds and creds.expired and creds.refresh_token:
-            creds.refresh(Request())
-        else:
-            if not Path(credentials_path).exists():
-                raise FileNotFoundError(
-                    f"Google OAuth client file not found at '{credentials_path}'. "
-                    "Download it from Google Cloud Console (APIs & Services > "
-                    "Credentials > OAuth client ID > Desktop app), point the "
-                    "sidebar to it, and run this app locally once to consent. "
-                    "For a headless deployment, do that once locally, then "
-                    "paste the resulting token.json contents into your host's "
-                    "secrets as GOOGLE_DRIVE_TOKEN_JSON."
-                )
-            flow = InstalledAppFlow.from_client_secrets_file(credentials_path, scopes)
-            creds = flow.run_local_server(port=0)  # opens a browser tab, once
-
-        try:
-            token_file.write_text(creds.to_json())
-        except OSError:
-            pass  # read-only filesystem (e.g. some hosts) — non-fatal
-
-    return creds
-
-
-def build_drive_search_tool(credentials_path: str, token_path: str, num_results: int):
-    """
-    Factory that returns a LangChain tool closing over the user's chosen
-    credentials/token paths and result-count setting from the sidebar.
-    """
-
     @tool("google_drive_search")
     def google_drive_search(query: str) -> str:
         """Search the user's personal Google Drive for documents matching the
-        query, and return their text content along with the file name/title
-        and a link, so the answer can cite the exact source."""
+        query, and return their text content along with the file name/title."""
         try:
             from googleapiclient.discovery import build
-
-            creds = get_drive_credentials(credentials_path, token_path, DRIVE_SCOPES)
+            
+            # Load the credentials directly from the user's session string
+            creds = Credentials.from_authorized_user_info(json.loads(creds_json_str))
             drive_service = build("drive", "v3", credentials=creds)
 
-            # Google Drive API v3 full-text search. Escape single quotes so a
-            # query containing one can't break the query string.
             safe_query = query.replace("'", "\\'")
             response = (
                 drive_service.files()
@@ -223,39 +159,27 @@ def build_drive_search_tool(credentials_path: str, token_path: str, num_results:
             if not matches:
                 return "No matching documents were found in Google Drive."
 
-            # Hand the matched file IDs to GoogleDriveLoader, which already
-            # knows how to export Google Docs/Sheets and extract PDF text.
-            # We pass `credentials` directly so it reuses the same OAuth
-            # session instead of re-authenticating.
             loader = GoogleDriveLoader(
                 file_ids=[f["id"] for f in matches],
                 credentials=creds,
-                scopes=DRIVE_SCOPES,
             )
             docs = loader.load()
-        except Exception as exc:  # noqa: BLE001 - surface any failure to the agent
+        except Exception as exc:
             return f"Google Drive search failed: {exc}"
 
         if not docs:
-            return (
-                "Matching files were found in Drive, but no readable text could "
-                "be extracted from them (unsupported file type)."
-            )
+            return "Matching files found, but no readable text could be extracted."
 
         chunks = []
         for doc in docs:
             title = doc.metadata.get("title", "Untitled")
             source = doc.metadata.get("source", "")
-            # Cap each document's contribution so one huge file can't blow
-            # out the agent's context window.
             content = doc.page_content.strip()[:4000]
             chunks.append(f"### {title}\nSource: {source}\n\n{content}")
 
         return "\n\n---\n\n".join(chunks)
 
     return google_drive_search
-
-
 # =============================================================================
 # Small helper: Gemini can return content as a plain string OR as a list of
 # content blocks (e.g. [{"type": "text", "text": "..."}]) depending on the
@@ -403,56 +327,87 @@ def settings_modal():
     st.markdown("**Presented by:** RXN Studios")
 
 # -----------------------------------------------------------------------
-# Sidebar: configuration
+# Sidebar: Profile & Configuration
 # -----------------------------------------------------------------------
 with st.sidebar:
-    st.header("Side Panel 📑")
+    st.header("Profile 👤")
+    
+    # 1. OAuth Scopes (Now includes profile and email data)
+    AUTH_SCOPES = [
+        "openid",
+        "https://www.googleapis.com/auth/userinfo.profile",
+        "https://www.googleapis.com/auth/userinfo.email",
+        "https://www.googleapis.com/auth/drive.readonly"
+    ]
+    
+    # In production, use your real domain (e.g., https://driver-app.streamlit.app)
+    REDIRECT_URI = "http://localhost:8501" 
+    web_creds_path = os.environ.get("DRIVER_WEB_CREDENTIALS", "web_credentials.json")
+    
+    try:
+        flow = Flow.from_client_secrets_file(
+            web_creds_path,
+            scopes=AUTH_SCOPES,
+            redirect_uri=REDIRECT_URI
+        )
+    except Exception as e:
+        flow = None
+        st.error("⚠️ web_credentials.json not found. Check Google Cloud setup.")
 
-    st.subheader("API Keys")
-    google_api_key = get_secret("GOOGLE_API_KEY")
-    if google_api_key:
-        st.success("GOOGLE_API_KEY loaded from secrets/environment ✅")
+    # 2. Catch the Redirect Code from Google
+    if "code" in st.query_params and flow:
+        try:
+            flow.fetch_token(code=st.query_params["code"])
+            st.session_state["user_creds"] = flow.credentials.to_json()
+            st.query_params.clear()  # Clean the URL
+            st.rerun()
+        except Exception as e:
+            st.error("Authentication failed.")
+
+    # 3. Render Profile or Login Button
+    if "user_creds" in st.session_state:
+        creds = Credentials.from_authorized_user_info(json.loads(st.session_state["user_creds"]))
+        
+        # Fetch the user's Google Profile data
+        user_info = requests.get(
+            "https://www.googleapis.com/oauth2/v1/userinfo", 
+            headers={"Authorization": f"Bearer {creds.token}"}
+        ).json()
+        
+        col1, col2 = st.columns([1, 3])
+        with col1:
+            st.image(user_info.get("picture", "https://via.placeholder.com/150"), width=50)
+        with col2:
+            st.markdown(f"**{user_info.get('name', 'User')}**")
+            st.caption(user_info.get("email", ""))
+            
+        if st.button("Log Out", use_container_width=True):
+            del st.session_state["user_creds"]
+            st.rerun()
     else:
-        google_api_key = st.text_input("GOOGLE_API_KEY", type="password")
-
-    tavily_api_key = get_secret("TAVILY_API_KEY")
-    if tavily_api_key:
-        st.success("TAVILY_API_KEY loaded from secrets/environment ✅")
-    else:
-        tavily_api_key = st.text_input("TAVILY_API_KEY", type="password")
-
-    st.subheader("Google Drive Auth (Legacy)")
-    credentials_path = st.text_input(
-        "credentials.json path",
-        value=os.environ.get("DRIVER_GOOGLE_CREDENTIALS", "credentials.json"),
-    )
-    token_path = st.text_input(
-        "token.json path (auto-created)",
-        value=os.environ.get("DRIVER_GOOGLE_TOKEN", "token.json"),
-    )
-
-    st.subheader("Memory")
-    checkpoint_db_path = st.text_input(
-        "Conversation DB path",
-        value=os.environ.get("DRIVER_CHECKPOINT_DB", "driver_checkpoints.sqlite"),
-    )
+        if flow:
+            auth_url, _ = flow.authorization_url(prompt='consent')
+            st.link_button("🌐 Sign in with Google", auth_url, use_container_width=True)
 
     st.divider()
     
-    # New Settings Modal Button
+    # Basic Settings
+    st.subheader("API Keys")
+    google_api_key = get_secret("GOOGLE_API_KEY")
+    tavily_api_key = get_secret("TAVILY_API_KEY")
+    if not google_api_key:
+        google_api_key = st.text_input("GOOGLE_API_KEY", type="password")
+    if not tavily_api_key:
+        tavily_api_key = st.text_input("TAVILY_API_KEY", type="password")
+
+    st.divider()
     if st.button("⚙️ Settings & About", use_container_width=True):
         settings_modal()
-
-    # New Conversation Button
     if st.button("🔄 New conversation", use_container_width=True):
         st.session_state.thread_id = str(uuid.uuid4())
         st.session_state.messages = []
         st.session_state.last_msg_count = 0
         st.rerun()
-
-# --- Hardcoded tool limits (AI will dynamically control these later) ---
-max_web_results = 5
-max_drive_results = 10
 # -----------------------------------------------------------------------
 # -----------------------------------------------------------------------
 # Guard: make sure we have the minimum required credentials before building
@@ -563,7 +518,10 @@ if user_input:
                 active_tools.append(TavilySearch(max_results=dynamic_web_results, topic="general", tavily_api_key=tavily_api_key))
             
             if task_type in ["drive", "hybrid"]:
-                active_tools.append(build_drive_search_tool(credentials_path, token_path, dynamic_drive_results))
+                if "user_creds" in st.session_state:
+                    active_tools.append(build_drive_search_tool(st.session_state["user_creds"], dynamic_drive_results))
+                else:
+                    st.warning("⚠️ The AI attempted to search your Drive, but you are not logged in. Please sign in via the sidebar.")
             
             if not active_tools:
                 # Safe fallback to satisfy LangGraph requirements
