@@ -302,6 +302,7 @@ st.title("🚗 D.R.I.V.E.R.")
 st.caption("Data Retriever & Intelligent Virtual Executive Researcher")
 import time
 
+# Initialize the empty placeholder
 splash = st.empty()
 
 with splash.container():
@@ -320,17 +321,22 @@ with splash.container():
             justify-content: center;
             align-items: center;
             z-index: 999999;
-            animation: fadeOut 1s ease-in-out 1.5s forwards;
+            /* Added keyframe definition for fadeOut */
+            animation: fadeOut 1s ease-in-out 1.5s forwards; 
         }
         .splash-text {
             font-size: 4rem;
             font-weight: bold;
-            color: #D9DEE5; /* Streamlit red, or change to your brand color */
+            color: #D9DEE5; 
             text-align: center;
-            margin-top: 30vh;
             animation: fadeInOut 2.5s ease-in-out forwards;
         }
         
+        /* Keyframe definitions */
+        @keyframes fadeOut {
+            0% { opacity: 1; }
+            100% { opacity: 0; }
+        }
         @keyframes fadeInOut {
             0% { opacity: 0; transform: scale(0.9); }
             30% { opacity: 1; transform: scale(1); }
@@ -338,11 +344,15 @@ with splash.container():
             100% { opacity: 0; transform: scale(1.1); }
         }
         </style>
-        <div class="splash-text">RXN Studios</div>
+        
+        <!-- Wrapped inside the splash-screen div to display fullscreen background -->
+        <div class="splash-screen">
+            <div class="splash-text">RXN Studios</div>
+        </div>
         """,
         unsafe_allow_html=True
     )
-    time.sleep(2.5) # Wait for animation to finish
+    time.sleep(2.5)  # Wait for animation to finish
 
 # Clear the splash screen so the main app can load
 splash.empty()
