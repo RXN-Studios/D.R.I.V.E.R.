@@ -524,8 +524,7 @@ if user_input:
                     st.warning("⚠️ The AI attempted to search your Drive, but you are not logged in. Please sign in via the sidebar.")
             
             if not active_tools:
-                # Safe fallback to satisfy LangGraph requirements
-                active_tools.append(build_drive_search_tool(credentials_path, token_path, 1))
+                active_tools.append(build_drive_search_tool(st.session_state.get("user_creds", "{}"), 1))
             
             exec_llm = ChatGoogleGenerativeAI(model=active_model, api_key=google_api_key)
             agent = create_react_agent(
@@ -536,17 +535,12 @@ if user_input:
             )
 
             # 4. EXECUTION WITH TOKEN STREAMING
-            st.session_state.last_msg_count = len(result["messages"]) if 'result' in locals() else st.session_state.last_msg_count
+            st.session_state.last_msg_count = len(st.session_state.get("messages", []))
             
-            # We use LangGraph stream to capture intermediate tool updates and final text tokens
-            placeholder = st.empty()
-            full_response_text = ""
+            tool_calls_made = []
+            tool_outputs = []
             
             with st.status("D.R.I.V.E.R. is working...", expanded=False) as status:
-                tool_calls_made = []
-                tool_outputs = []
-                
-                # Stream events from the agent graph
                 for chunk in agent.stream({"messages": [HumanMessage(content=user_input)]}, config=config, stream_mode="updates"):
                     for node_name, node_state in chunk.items():
                         if node_name == "agent":
@@ -562,7 +556,6 @@ if user_input:
                 
                 status.update(label="Synthesis complete", state="complete", expanded=False)
 
-            # Retrieve final messages state from checkpoint after execution
             final_state = agent.get_state(config)
             all_messages = final_state.values.get("messages", [])
             new_messages = all_messages[st.session_state.last_msg_count :]
@@ -588,3 +581,7 @@ if user_input:
                     time.sleep(0.01)
 
             st.write_stream(stream_response())
+            st.session_state.messages.append({"role": "assistant", "content": final_answer})
+
+        except Exception as exc:
+            st.error(f"The agent hit an error: {exc}")
