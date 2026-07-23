@@ -433,7 +433,7 @@ llm = ChatGoogleGenerativeAI(model=model_name, api_key=google_api_key)
 agent = create_react_agent(
     model=llm,
     tools=[web_search_tool, drive_search_tool],
-    state_modifier=SYSTEM_PROMPT,
+    prompt=SYSTEM_PROMPT,
     checkpointer=checkpointer,
 )
 
