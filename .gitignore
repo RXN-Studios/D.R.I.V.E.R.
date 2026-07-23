@@ -1,6 +1,6 @@
 venv/
 __pycache__/
 .streamlit/
-credentials.json
+web_credentials.json
 token.json
 driver_checkpoints.sqlite
