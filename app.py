@@ -65,7 +65,7 @@ from pathlib import Path
 from typing import List
 
 import streamlit as st
-from langchain.agents import create_agent
+from langgraph.prebuilt import create_react_agent
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from langchain_core.tools import tool
 from langchain_google_community import GoogleDriveLoader
@@ -430,10 +430,10 @@ drive_search_tool = build_drive_search_tool(
 
 llm = ChatGoogleGenerativeAI(model=model_name, api_key=google_api_key)
 
-agent = create_agent(
-    llm,
+agent = create_react_agent(
+    model=llm,
     tools=[web_search_tool, drive_search_tool],
-    system_prompt=SYSTEM_PROMPT,
+    state_modifier=SYSTEM_PROMPT,
     checkpointer=checkpointer,
 )
 
