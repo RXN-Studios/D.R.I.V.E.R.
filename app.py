@@ -317,15 +317,15 @@ st.markdown(
         position: fixed;
         top: 0;
         left: 0;
-        width: 100vw;
-        height: 100vh;
+        width: 200vw;
+        height: 200vh;
         background-color: #0e1117;
         display: flex;
         flex-direction: column;
         justify-content: center;
         align-items: center;
         z-index: 999999;
-        animation: fadeInOut 1s ease-in-out 3.5s forwards;
+        animation: fadeInOut 3.5s ease-in-out forwards;
     }
     </style>
     <div class="splash-screen">
@@ -334,7 +334,7 @@ st.markdown(
     """,
     unsafe_allow_html=True,
 )
-time.sleep(2.5)
+time.sleep(3.5)
 
 # 4. Clear the placeholder to remove the splash screen from the DOM
 splash_placeholder.empty()
