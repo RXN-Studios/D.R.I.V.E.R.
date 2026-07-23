@@ -360,16 +360,25 @@ splash.empty()
 # -----------------------------------------------------------------------
 # Sidebar: configuration
 # -----------------------------------------------------------------------
+@st.dialog("⚙️ Settings & About")
+def settings_modal():
+    st.markdown("### 🚗 D.R.I.V.E.R.")
+    st.caption("Document Retrieval & Intelligent Virtual Executive Researcher")
+    st.divider()
+    st.markdown(
+        "**About this agent:**\n"
+        "- **Orchestration:** LangChain `create_agent` (LangGraph runtime)\n"
+        "- **Reasoning engine:** Gemini (swappable)\n"
+        "- **Tools:** live web search, personal Google Drive search\n"
+        "- **Memory:** persistent, SQLite-backed, survives restarts\n"
+    )
+    st.divider()
+    st.markdown("**Developed by:** B.Rakshan")
+    st.markdown("**Presented by:** RXN Studios")
+
 with st.sidebar:
     st.header("Side Panel 📑")
 
-    st.subheader("Reasoning Engine")
-    model_name = st.text_input(
-        "Gemini model",
-        value=DEFAULT_MODEL,
-        help="Any model string ChatGoogleGenerativeAI accepts, "
-        "e.g. gemini-2.5-flash, gemini-3-flash-preview.",
-    )
     google_api_key = get_secret("GOOGLE_API_KEY")
     if google_api_key:
         st.success("GOOGLE_API_KEY loaded from secrets/environment ✅")
