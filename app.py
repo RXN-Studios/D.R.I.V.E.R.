@@ -63,7 +63,8 @@ import sqlite3
 import uuid
 from pathlib import Path
 from typing import List
-
+from pydantic import BaseModel, Field
+from datetime import date
 import streamlit as st
 from langgraph.prebuilt import create_react_agent
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
@@ -292,6 +293,34 @@ def get_checkpointer(db_path: str) -> SqliteSaver:
     checkpointer.setup()  # idempotent — creates tables on first run only
     return checkpointer
 
+# =============================================================================
+# Intent Routing & Quota Tracking
+# =============================================================================
+class TaskIntent(BaseModel):
+    task_type: str = Field(description="Must be one of: 'drive' (files/docs), 'web' (internet research), 'hybrid' (both), or 'general' (basic chat, no search needed)")
+    complexity: str = Field(description="Must be one of: 'low' or 'high'")
+
+def setup_quota_db(db_path: str):
+    conn = sqlite3.connect(db_path, check_same_thread=False)
+    conn.execute("CREATE TABLE IF NOT EXISTS user_quotas (date TEXT PRIMARY KEY, pro_uses INTEGER)")
+    conn.commit()
+    return conn
+
+def get_pro_usage(conn):
+    today = date.today().isoformat()
+    cur = conn.execute("SELECT pro_uses FROM user_quotas WHERE date = ?", (today,))
+    row = cur.fetchone()
+    return row[0] if row else 0
+
+def increment_pro_usage(conn):
+    today = date.today().isoformat()
+    usage = get_pro_usage(conn)
+    if usage == 0:
+        conn.execute("INSERT INTO user_quotas (date, pro_uses) VALUES (?, 1)", (today,))
+    else:
+        conn.execute("UPDATE user_quotas SET pro_uses = ? WHERE date = ?", (usage + 1, today,))
+    conn.commit()
+    return usage + 1
 
 # =============================================================================
 # Streamlit page setup
@@ -460,46 +489,23 @@ if "last_msg_count" not in st.session_state:
 checkpointer = get_checkpointer(checkpoint_db_path)
 
 # =============================================================================
-# Chat UI & Agent Setup
+# Chat UI & Dynamic Agent Setup
 # =============================================================================
 
-# Render existing chat message history
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
 
-# Compact Model Dropdown positioned directly above the chat box
+# Mode preference dropdown replaces the hardcoded model selector
 col1, col2 = st.columns([1, 3])
 with col1:
-    model_name = st.selectbox(
-        "Reasoning Engine",
-        options=["gemini-2.5-flash-lite", "gemini-2.5-flash", "gemini-1.5-pro"],
-        index=1,
+    preferred_mode = st.selectbox(
+        "Mode Preference",
+        options=["Auto-Detect (Recommended)", "Force: Standard (Flash)", "Force: High-Power (Pro)"],
+        index=0,
         label_visibility="collapsed",
-        help="Select reasoning engine model"
+        help="AI will auto-route, but you can force a minimum model here."
     )
-
-# Build tools, LLM, and agent using the model_name selected above
-web_search_tool = TavilySearch(
-    max_results=max_web_results,
-    topic="general",
-    tavily_api_key=tavily_api_key,
-)
-
-drive_search_tool = build_drive_search_tool(
-    credentials_path=credentials_path,
-    token_path=token_path,
-    num_results=max_drive_results,
-)
-
-llm = ChatGoogleGenerativeAI(model=model_name, api_key=GOOGLE_API_KEY)
-
-agent = create_react_agent(
-    model=llm,
-    tools=[web_search_tool, drive_search_tool],
-    prompt=SYSTEM_PROMPT,
-    checkpointer=checkpointer,
-)
 
 user_input = st.chat_input("Ask D.R.I.V.E.R. about your Drive or the web...")
 
@@ -510,25 +516,83 @@ if user_input:
 
     with st.chat_message("assistant"):
         config = {"configurable": {"thread_id": st.session_state.thread_id}}
+        
         try:
+            # 1. INTENT ROUTING
+            with st.spinner("Analyzing intent..."):
+                router_llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash-lite", api_key=google_api_key)
+                structured_router = router_llm.with_structured_output(TaskIntent)
+                intent_result = structured_router.invoke(
+                    f"Analyze this user request. Decide task_type (web, drive, hybrid, general) and complexity (low, high): {user_input}"
+                )
+                
+                task_type = intent_result.task_type
+                complexity = intent_result.complexity
+            
+            # 2. QUOTA & MODEL SELECTION
+            quota_conn = setup_quota_db(checkpoint_db_path)
+            pro_usage = get_pro_usage(quota_conn)
+            
+            active_model = "gemini-2.5-flash"
+            dynamic_web_results = 3
+            dynamic_drive_results = 5
+            
+            if preferred_mode == "Force: High-Power (Pro)" or (preferred_mode == "Auto-Detect (Recommended)" and (complexity == "high" or task_type == "hybrid")):
+                if pro_usage < 5:
+                    active_model = "gemini-1.5-pro"
+                    dynamic_web_results = 8
+                    dynamic_drive_results = 15
+                    new_usage = increment_pro_usage(quota_conn)
+                    st.caption(f"🚀 High-Power Mode Engaged (Daily Pro Uses: {new_usage}/5) | Intent: {task_type.upper()}")
+                else:
+                    st.warning("⚠️ Daily High-Power limit (5/5) reached. Automatically downgrading to Standard Mode.")
+                    active_model = "gemini-2.5-flash"
+                    dynamic_web_results = 5
+                    dynamic_drive_results = 10
+                    st.caption(f"🔍 Standard Mode | Intent: {task_type.upper()}")
+            else:
+                if task_type == "general":
+                    active_model = "gemini-2.5-flash-lite"
+                    st.caption(f"⚡ Fast Mode (No search needed)")
+                else:
+                    st.caption(f"🔍 Standard Mode | Intent: {task_type.upper()}")
+
+            # 3. DYNAMIC TOOL BUILDING
+            active_tools = []
+            if task_type in ["web", "hybrid"]:
+                active_tools.append(TavilySearch(max_results=dynamic_web_results, topic="general", tavily_api_key=tavily_api_key))
+            
+            if task_type in ["drive", "hybrid"]:
+                active_tools.append(build_drive_search_tool(credentials_path, token_path, dynamic_drive_results))
+            
+            if not active_tools:
+                # Safe fallback to satisfy LangGraph requirements
+                active_tools.append(build_drive_search_tool(credentials_path, token_path, 1))
+            
+            exec_llm = ChatGoogleGenerativeAI(model=active_model, api_key=google_api_key)
+            agent = create_react_agent(
+                model=exec_llm,
+                tools=active_tools,
+                prompt=SYSTEM_PROMPT,
+                checkpointer=checkpointer,
+            )
+
+            # 4. EXECUTION
             with st.spinner("Thinking..."):
-                # Only the NEW message needs to be sent — the checkpointer
-                # (keyed by thread_id) already holds prior turns and will be
-                # merged in automatically by the graph.
                 result = agent.invoke(
                     {"messages": [HumanMessage(content=user_input)]},
                     config=config,
                 )
-        except Exception as exc:  # noqa: BLE001 - show API/auth errors in the UI
+                
+        except Exception as exc:
             st.error(f"The agent hit an error: {exc}")
             st.stop()
-
+            
         all_messages = result["messages"]
         new_messages = all_messages[st.session_state.last_msg_count :]
         st.session_state.last_msg_count = len(all_messages)
 
-        # Transparency panel: show which tool(s) fired and what they returned,
-        # mirroring the design doc's "Source Attribution & Validation" goal.
+        # 5. TRANSPARENCY PANEL
         tool_calls_made = [
             m for m in new_messages if isinstance(m, AIMessage) and m.tool_calls
         ]
