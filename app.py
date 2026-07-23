@@ -312,10 +312,14 @@ with splash.container():
         .splash-text {
             font-size: 4rem;
             font-weight: bold;
-            color: #FF4B4B; /* Streamlit red, or change to your brand color */
+            color: #D9DEE5;
+            background-color: #0e1117;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
             text-align: center;
             margin-top: 30vh;
-            animation: fadeInOut 3.5s ease-in-out forwards;
+            animation: fadeInOut 2.5s ease-in-out forwards;
         }
         @keyframes fadeInOut {
             0% { opacity: 0; transform: scale(0.9); }
@@ -336,7 +340,7 @@ splash.empty()
 # Sidebar: configuration
 # -----------------------------------------------------------------------
 with st.sidebar:
-    st.header("⚙️ Configuration")
+    st.header("Side Panel 📑")
 
     st.subheader("Reasoning Engine")
     model_name = st.text_input(
