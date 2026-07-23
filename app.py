@@ -535,38 +535,56 @@ if user_input:
                 checkpointer=checkpointer,
             )
 
-            # 4. EXECUTION
-            with st.spinner("Thinking..."):
-                result = agent.invoke(
-                    {"messages": [HumanMessage(content=user_input)]},
-                    config=config,
-                )
-                
-        except Exception as exc:
-            st.error(f"The agent hit an error: {exc}")
-            st.stop()
+            # 4. EXECUTION WITH TOKEN STREAMING
+            st.session_state.last_msg_count = len(result["messages"]) if 'result' in locals() else st.session_state.last_msg_count
             
-        all_messages = result["messages"]
-        new_messages = all_messages[st.session_state.last_msg_count :]
-        st.session_state.last_msg_count = len(all_messages)
+            # We use LangGraph stream to capture intermediate tool updates and final text tokens
+            placeholder = st.empty()
+            full_response_text = ""
+            
+            with st.status("D.R.I.V.E.R. is working...", expanded=False) as status:
+                tool_calls_made = []
+                tool_outputs = []
+                
+                # Stream events from the agent graph
+                for chunk in agent.stream({"messages": [HumanMessage(content=user_input)]}, config=config, stream_mode="updates"):
+                    for node_name, node_state in chunk.items():
+                        if node_name == "agent":
+                            latest_msg = node_state["messages"][-1]
+                            if latest_msg.tool_calls:
+                                for call in latest_msg.tool_calls:
+                                    tool_calls_made.append(call)
+                                    status.update(label=f"Calling tool: `{call['name']}`...", state="running")
+                        elif node_name == "tools":
+                            latest_msg = node_state["messages"][-1]
+                            tool_outputs.append(latest_msg)
+                            status.update(label="Processing tool results...", state="running")
+                
+                status.update(label="Synthesis complete", state="complete", expanded=False)
 
-        # 5. TRANSPARENCY PANEL
-        tool_calls_made = [
-            m for m in new_messages if isinstance(m, AIMessage) and m.tool_calls
-        ]
-        if tool_calls_made:
-            with st.expander("🔧 Tool activity", expanded=False):
-                for m in new_messages:
-                    if isinstance(m, AIMessage) and m.tool_calls:
-                        for call in m.tool_calls:
-                            st.markdown(f"**Called `{call['name']}`** — args: `{call['args']}`")
-                    elif isinstance(m, ToolMessage):
+            # Retrieve final messages state from checkpoint after execution
+            final_state = agent.get_state(config)
+            all_messages = final_state.values.get("messages", [])
+            new_messages = all_messages[st.session_state.last_msg_count :]
+            st.session_state.last_msg_count = len(all_messages)
+
+            # 5. TRANSPARENCY PANEL
+            if tool_calls_made:
+                with st.expander("🔧 Tool activity", expanded=False):
+                    for call in tool_calls_made:
+                        st.markdown(f"**Called `{call['name']}`** — args: `{call['args']}`")
+                    for m in tool_outputs:
                         preview = m.content
                         if len(preview) > 500:
                             preview = preview[:500] + "…"
-                        st.markdown(f"**`{m.name}` returned:**\n\n{preview}")
+                        st.markdown(f"**`{getattr(m, 'name', 'Tool')}` returned:**\n\n{preview}")
 
-        final_answer = extract_text(all_messages[-1].content)
-        st.markdown(final_answer)
+            # 6. RENDER STREAMED FINAL ANSWER
+            final_answer = extract_text(all_messages[-1].content)
+            
+            def stream_response():
+                for word in final_answer.split(" "):
+                    yield word + " "
+                    time.sleep(0.01)
 
-    st.session_state.messages.append({"role": "assistant", "content": final_answer})
+            st.write_stream(stream_response())
