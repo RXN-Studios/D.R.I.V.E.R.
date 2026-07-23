@@ -442,7 +442,7 @@ if "last_msg_count" not in st.session_state:
     st.session_state.last_msg_count = 0
 
 checkpoint_db_path = "driver_checkpoints.sqlite"
-checkpointer = get_checkpointer(checkpoint_db_path))
+checkpointer = get_checkpointer(checkpoint_db_path)
 
 # =============================================================================
 # Chat UI & Dynamic Agent Setup
