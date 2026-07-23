@@ -65,7 +65,7 @@ from pathlib import Path
 from typing import List
 
 import streamlit as st
-from langgraph.prebuilt import create_react_agent
+from langchain.agents import create_agent
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from langchain_core.tools import tool
 from langchain_google_community import GoogleDriveLoader
