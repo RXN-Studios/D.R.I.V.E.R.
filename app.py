@@ -437,11 +437,12 @@ if missing:
 if "thread_id" not in st.session_state:
     st.session_state.thread_id = str(uuid.uuid4())
 if "messages" not in st.session_state:
-    st.session_state.messages = []  # only for rendering the chat UI
+    st.session_state.messages = []
 if "last_msg_count" not in st.session_state:
     st.session_state.last_msg_count = 0
 
-checkpointer = get_checkpointer(checkpoint_db_path)
+checkpoint_db_path = "driver_checkpoints.sqlite"
+checkpointer = get_checkpointer(checkpoint_db_path))
 
 # =============================================================================
 # Chat UI & Dynamic Agent Setup
