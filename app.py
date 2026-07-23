@@ -299,8 +299,39 @@ def get_checkpointer(db_path: str) -> SqliteSaver:
 
 st.set_page_config(page_title="D.R.I.V.E.R.", page_icon="🚗", layout="wide")
 st.title("🚗 D.R.I.V.E.R.")
-st.caption("Document Retrieval & Intelligent Virtual Executive Researcher")
+st.caption("Data Retriever & Intelligent Virtual Executive Researcher")
+import time
 
+# Create a placeholder container
+splash = st.empty()
+
+with splash.container():
+    st.markdown(
+        """
+        <style>
+        .splash-text {
+            font-size: 4rem;
+            font-weight: bold;
+            color: #FF4B4B; /* Streamlit red, or change to your brand color */
+            text-align: center;
+            margin-top: 30vh;
+            animation: fadeInOut 2.5s ease-in-out forwards;
+        }
+        @keyframes fadeInOut {
+            0% { opacity: 0; transform: scale(0.9); }
+            30% { opacity: 1; transform: scale(1); }
+            80% { opacity: 1; transform: scale(1); }
+            100% { opacity: 0; transform: scale(1.1); }
+        }
+        </style>
+        <div class="splash-text">RXN Studios</div>
+        """,
+        unsafe_allow_html=True
+    )
+    time.sleep(2.5) # Wait for animation to finish
+
+# Clear the splash screen so the main app can load
+splash.empty()
 # -----------------------------------------------------------------------
 # Sidebar: configuration
 # -----------------------------------------------------------------------
