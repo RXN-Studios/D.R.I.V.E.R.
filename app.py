@@ -302,42 +302,50 @@ st.title("🚗 D.R.I.V.E.R.")
 st.caption("Data Retriever & Intelligent Virtual Executive Researcher")
 import time
 
-splash_placeholder = st.empty()
+splash = st.empty()
 
-# 2. Inject custom CSS with a fade-out animation
-st.markdown(
-    """
-    <style>
-    @keyframes fadeInOut {
-        0% { opacity: 0; }
-        50% { opacity: 1; }
-        100% { opacity: 0; }
-    }
-    .splash-screen {
-        position: fixed;
-        top: 0;
-        left: 0;
-        width: 200vw;
-        height: 200vh;
-        background-color: #0e1117;
-        display: flex;
-        flex-direction: column;
-        justify-content: center;
-        align-items: center;
-        z-index: 999999;
-        animation: fadeInOut 3.5s ease-in-out forwards;
-    }
-    </style>
-    <div class="splash-screen">
-        <h1 style="color: white;">RXN Studios</h1>
-    </div>
-    """,
-    unsafe_allow_html=True,
-)
-time.sleep(3.5)
+with splash.container():
+    st.markdown(
+        """
+        <style>
+        .splash-screen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background-color: #0e1117;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 999999;
+            animation: fadeOut 1s ease-in-out 1.5s forwards;
+        }
+        .splash-text {
+            font-size: 4rem;
+            font-weight: bold;
+            color: #D9DEE5; /* Streamlit red, or change to your brand color */
+            text-align: center;
+            margin-top: 30vh;
+            animation: fadeInOut 2.5s ease-in-out forwards;
+        }
+        
+        @keyframes fadeInOut {
+            0% { opacity: 0; transform: scale(0.9); }
+            30% { opacity: 1; transform: scale(1); }
+            80% { opacity: 1; transform: scale(1); }
+            100% { opacity: 0; transform: scale(1.1); }
+        }
+        </style>
+        <div class="splash-text">RXN Studios</div>
+        """,
+        unsafe_allow_html=True
+    )
+    time.sleep(2.5) # Wait for animation to finish
 
-# 4. Clear the placeholder to remove the splash screen from the DOM
-splash_placeholder.empty()
+# Clear the splash screen so the main app can load
+splash.empty()
 
 # -----------------------------------------------------------------------
 # Sidebar: configuration
