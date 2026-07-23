@@ -469,9 +469,26 @@ if "last_msg_count" not in st.session_state:
 checkpointer = get_checkpointer(checkpoint_db_path)
 
 # =============================================================================
-# Build tools, LLM, and the agent graph
+# Chat UI & Agent Setup
 # =============================================================================
 
+# Render existing chat message history
+for msg in st.session_state.messages:
+    with st.chat_message(msg["role"]):
+        st.markdown(msg["content"])
+
+# Compact Model Dropdown positioned directly above the chat box
+col1, col2 = st.columns([1, 3])
+with col1:
+    model_name = st.selectbox(
+        "Reasoning Engine",
+        options=["gemini-2.5-flash-lite", "gemini-2.5-flash", "gemini-1.5-pro"],
+        index=1,
+        label_visibility="collapsed",
+        help="Select reasoning engine model"
+    )
+
+# Build tools, LLM, and agent using the model_name selected above
 web_search_tool = TavilySearch(
     max_results=max_web_results,
     topic="general",
@@ -484,7 +501,7 @@ drive_search_tool = build_drive_search_tool(
     num_results=max_drive_results,
 )
 
-llm = ChatGoogleGenerativeAI(model=model_name, api_key=google_api_key)
+llm = ChatGoogleGenerativeAI(model=model_name, api_key=GOOGLE_API_KEY)
 
 agent = create_react_agent(
     model=llm,
@@ -492,14 +509,6 @@ agent = create_react_agent(
     prompt=SYSTEM_PROMPT,
     checkpointer=checkpointer,
 )
-
-# =============================================================================
-# Chat UI
-# =============================================================================
-
-for msg in st.session_state.messages:
-    with st.chat_message(msg["role"]):
-        st.markdown(msg["content"])
 
 user_input = st.chat_input("Ask D.R.I.V.E.R. about your Drive or the web...")
 
