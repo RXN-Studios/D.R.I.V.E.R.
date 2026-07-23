@@ -315,7 +315,7 @@ with splash.container():
             color: #FF4B4B; /* Streamlit red, or change to your brand color */
             text-align: center;
             margin-top: 30vh;
-            animation: fadeInOut 2.5s ease-in-out forwards;
+            animation: fadeInOut 3.5s ease-in-out forwards;
         }
         @keyframes fadeInOut {
             0% { opacity: 0; transform: scale(0.9); }
