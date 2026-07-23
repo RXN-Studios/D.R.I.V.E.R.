@@ -357,9 +357,6 @@ with splash.container():
 # Clear the splash screen so the main app can load
 splash.empty()
 
-# -----------------------------------------------------------------------
-# Sidebar: configuration
-# -----------------------------------------------------------------------
 @st.dialog("⚙️ Settings & About")
 def settings_modal():
     st.markdown("### 🚗 D.R.I.V.E.R.")
@@ -376,61 +373,58 @@ def settings_modal():
     st.markdown("**Developed by:** B.Rakshan")
     st.markdown("**Presented by:** RXN Studios")
 
+# -----------------------------------------------------------------------
+# Sidebar: configuration
+# -----------------------------------------------------------------------
 with st.sidebar:
     st.header("Side Panel 📑")
-  
-    st.subheader("Web Search (Tavily)")
+
+    st.subheader("API Keys")
+    google_api_key = get_secret("GOOGLE_API_KEY")
+    if google_api_key:
+        st.success("GOOGLE_API_KEY loaded from secrets/environment ✅")
+    else:
+        google_api_key = st.text_input("GOOGLE_API_KEY", type="password")
+
     tavily_api_key = get_secret("TAVILY_API_KEY")
     if tavily_api_key:
         st.success("TAVILY_API_KEY loaded from secrets/environment ✅")
     else:
-        tavily_api_key = st.text_input(
-            "TAVILY_API_KEY",
-            type="password",
-            help="For a deployed app, set this in `.streamlit/secrets.toml` "
-            "(or your host's secret manager) instead.",
-        )
-    max_web_results = st.slider("Max web results", 1, 10, 5)
+        tavily_api_key = st.text_input("TAVILY_API_KEY", type="password")
 
-    st.subheader("Google Drive")
+    st.subheader("Google Drive Auth (Legacy)")
     credentials_path = st.text_input(
         "credentials.json path",
         value=os.environ.get("DRIVER_GOOGLE_CREDENTIALS", "credentials.json"),
-        help="OAuth client file downloaded from Google Cloud Console "
-        "(Desktop app credentials).",
     )
     token_path = st.text_input(
         "token.json path (auto-created)",
         value=os.environ.get("DRIVER_GOOGLE_TOKEN", "token.json"),
-        help="Cached after the first browser consent — delete this file to "
-        "force re-authentication (e.g. after changing scopes).",
     )
-    max_drive_results = st.slider("Max Drive documents per search", 1, 15, 5)
 
     st.subheader("Memory")
     checkpoint_db_path = st.text_input(
         "Conversation DB path",
         value=os.environ.get("DRIVER_CHECKPOINT_DB", "driver_checkpoints.sqlite"),
-        help="SQLite file storing conversation history so it survives app "
-        "restarts. Shared by all sessions on this server; each browser "
-        "session gets its own conversation via a unique thread_id.",
     )
 
     st.divider()
+    
+    # New Settings Modal Button
+    if st.button("⚙️ Settings & About", use_container_width=True):
+        settings_modal()
+
+    # New Conversation Button
     if st.button("🔄 New conversation", use_container_width=True):
         st.session_state.thread_id = str(uuid.uuid4())
         st.session_state.messages = []
         st.session_state.last_msg_count = 0
         st.rerun()
 
-    with st.expander("ℹ️ About this agent"):
-        st.markdown(
-            "- **Orchestration:** LangChain `create_agent` (LangGraph runtime)\n"
-            "- **Reasoning engine:** Gemini (swappable)\n"
-            "- **Tools:** live web search, personal Google Drive search\n"
-            "- **Memory:** persistent, SQLite-backed, survives restarts\n"
-        )
-
+# --- Hardcoded tool limits (AI will dynamically control these later) ---
+max_web_results = 5
+max_drive_results = 10
+# -----------------------------------------------------------------------
 # -----------------------------------------------------------------------
 # Guard: make sure we have the minimum required credentials before building
 # the agent. The Drive tool degrades gracefully on its own (it returns an
