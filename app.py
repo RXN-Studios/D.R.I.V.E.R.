@@ -255,32 +255,32 @@ def increment_pro_usage(conn):
 # =============================================================================
 # Chat History Tracking Helpers
 # =============================================================================
-def save_thread_title(db_path: str, thread_id: str, title: str):
+def save_thread_title(db_path: str, thread_id: str, title: str, user_id: str):
     conn = sqlite3.connect(db_path, check_same_thread=False)
     conn.execute(
-        "CREATE TABLE IF NOT EXISTS conversation_threads (thread_id TEXT PRIMARY KEY, title TEXT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)"
+        "CREATE TABLE IF NOT EXISTS conversation_threads (thread_id TEXT PRIMARY KEY, user_id TEXT, title TEXT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)"
     )
     cur = conn.execute("SELECT title FROM conversation_threads WHERE thread_id = ?", (thread_id,))
     if not cur.fetchone():
-        conn.execute("INSERT INTO conversation_threads (thread_id, title) VALUES (?, ?)", (thread_id, title))
+        conn.execute("INSERT INTO conversation_threads (thread_id, user_id, title) VALUES (?, ?, ?)", (thread_id, user_id, title))
         conn.commit()
     conn.close()
 
-def get_saved_threads(db_path: str):
+def get_saved_threads(db_path: str, user_id: str):
     if not os.path.exists(db_path):
         return []
     conn = sqlite3.connect(db_path, check_same_thread=False)
     try:
         conn.execute(
-            "CREATE TABLE IF NOT EXISTS conversation_threads (thread_id TEXT PRIMARY KEY, title TEXT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)"
+            "CREATE TABLE IF NOT EXISTS conversation_threads (thread_id TEXT PRIMARY KEY, user_id TEXT, title TEXT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)"
         )
-        cur = conn.execute("SELECT thread_id, title FROM conversation_threads ORDER BY rowid DESC")
+        cur = conn.execute("SELECT thread_id, title FROM conversation_threads WHERE user_id = ? ORDER BY rowid DESC", (user_id,))
         return cur.fetchall()
     except Exception:
         return []
     finally:
         conn.close()
-
+      
 def load_messages_from_checkpoint(checkpointer, thread_id: str):
     config = {"configurable": {"thread_id": thread_id}}
     checkpoint_tuple = checkpointer.get(config)
@@ -449,6 +449,8 @@ with st.sidebar:
             "https://www.googleapis.com/oauth2/v1/userinfo", 
             headers={"Authorization": f"Bearer {creds.token}"}
         ).json()
+      
+      st.session_state["user_id"] = user_info.get("email", "default_user")
         
         col1, col2 = st.columns([1, 3])
         with col1:
@@ -490,8 +492,8 @@ with st.sidebar:
       
     st.divider()
     st.subheader("💬 Chat History")
-    saved_threads = get_saved_threads("driver_checkpoints.sqlite")
-    if saved_threads:
+    current_user = st.session_state.get("user_id", "default_user")
+    saved_threads = get_saved_threads("driver_checkpoints.sqlite", current_user)
         for t_id, t_title in saved_threads:
             # Highlight current active conversation
             button_label = f"▶ {t_title}" if t_id == st.session_state.get("thread_id") else t_title
@@ -562,7 +564,8 @@ user_input = st.chat_input("Ask D.R.I.V.E.R. about your Drive or the web...")
 if user_input:
     st.session_state.messages.append({"role": "user", "content": user_input})
     thread_title = user_input[:28] + "..." if len(user_input) > 28 else user_input
-    save_thread_title("driver_checkpoints.sqlite", st.session_state.thread_id, thread_title)
+    current_user = st.session_state.get("user_id", "default_user")
+    save_thread_title("driver_checkpoints.sqlite", st.session_state.thread_id, thread_title, current_user)
     with st.chat_message("user"):
         st.markdown(user_input)
 
