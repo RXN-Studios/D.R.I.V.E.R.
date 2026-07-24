@@ -385,7 +385,7 @@ with st.sidebar:
     ]
     
     # In production, use your real domain (e.g., https://driver-app.streamlit.app)
-    REDIRECT_URI = "http://localhost:8501" 
+    REDIRECT_URI = "https://driver-app.streamlit.app" 
     web_creds_path = os.environ.get("DRIVER_WEB_CREDENTIALS", "web_credentials.json")
     
     try:
