@@ -76,6 +76,7 @@ from langgraph.checkpoint.sqlite import SqliteSaver
 import requests
 from google_auth_oauthlib.flow import Flow
 from google.oauth2.credentials import Credentials
+from streamlit_cookies_controller import CookieController
 # =============================================================================
 # Constants
 # =============================================================================
@@ -302,6 +303,8 @@ def load_messages_from_checkpoint(checkpointer, thread_id: str):
 st.set_page_config(page_title="D.R.I.V.E.R.", page_icon="🚗", layout="wide")
 st.title("🚗 D.R.I.V.E.R.")
 st.caption("Data Retriever & Intelligent Virtual Executive Researcher")
+# Initialize cookie manager for persistent logins
+cookie_controller = CookieController()
 import time
 
 # Initialize the empty placeholder
@@ -392,7 +395,13 @@ with st.sidebar:
     # In production, use your real domain (e.g., https://driver-app.streamlit.app)
     REDIRECT_URI = "https://driver-ragai.streamlit.app" 
     web_creds_path = os.environ.get("DRIVER_WEB_CREDENTIALS", "web_credentials.json")
-    
+
+  # --- NEW: Check for existing login cookie before anything else ---
+    if "user_creds" not in st.session_state:
+        saved_creds = cookie_controller.get("driver_user_creds")
+        if saved_creds:
+            st.session_state["user_creds"] = saved_creds
+  
     try:
         flow = Flow.from_client_secrets_file(
             web_creds_path,
@@ -414,7 +423,9 @@ with st.sidebar:
                 flow.code_verifier = oauth_cache[state]
 
             flow.fetch_token(code=st.query_params["code"])
-            st.session_state["user_creds"] = flow.credentials.to_json()
+            creds_json = flow.credentials.to_json()
+            st.session_state["user_creds"] = creds_json
+            cookie_controller.set("driver_user_creds", creds_json, max_age=2592000)
             st.query_params.clear()  # Clean the URL
             st.rerun()
         except Exception as e:
@@ -438,6 +449,7 @@ with st.sidebar:
             st.caption(user_info.get("email", ""))
             
         if st.button("Log Out", use_container_width=True):
+            cookie_controller.remove("driver_user_creds")
             del st.session_state["user_creds"]
             st.rerun()
     else:
