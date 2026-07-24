@@ -406,7 +406,7 @@ with st.sidebar:
             st.query_params.clear()  # Clean the URL
             st.rerun()
         except Exception as e:
-            st.error("Authentication failed.{e}")
+            st.error(f"Authentication failed: {e}")
 
     # 3. Render Profile or Login Button
     if "user_creds" in st.session_state:
