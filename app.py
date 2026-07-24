@@ -354,7 +354,7 @@ with splash.container():
 # Clear the splash screen so the main app can load
 splash.empty()
 
-@st.dialog("⚙️ Settings & About")
+@st.dialog("About")
 def settings_modal():
     st.markdown("### 🚗 D.R.I.V.E.R.")
     st.caption("Document Retrieval & Intelligent Virtual Executive Researcher")
@@ -401,6 +401,9 @@ with st.sidebar:
     # 2. Catch the Redirect Code from Google
     if "code" in st.query_params and flow:
         try:
+            if "code_verifier" in st.session_state:
+                flow.code_verifier = st.session_state["code_verifier"]
+          
             flow.fetch_token(code=st.query_params["code"])
             st.session_state["user_creds"] = flow.credentials.to_json()
             st.query_params.clear()  # Clean the URL
@@ -431,6 +434,7 @@ with st.sidebar:
     else:
         if flow:
             auth_url, _ = flow.authorization_url(prompt='consent')
+            st.session_state["code_verifier"] = flow.code_verifier
             st.link_button("🌐 Sign in with Google", auth_url, use_container_width=True)
           
     # Basic Settings
