@@ -395,12 +395,6 @@ with st.sidebar:
     # In production, use your real domain (e.g., https://driver-app.streamlit.app)
     REDIRECT_URI = "https://driver-ragai.streamlit.app" 
     web_creds_path = os.environ.get("DRIVER_WEB_CREDENTIALS", "web_credentials.json")
-
-  # --- NEW: Check for existing login cookie before anything else ---
-    if "user_creds" not in st.session_state:
-        saved_creds = cookie_controller.get("driver_user_creds")
-        if saved_creds:
-            st.session_state["user_creds"] = saved_creds
   
     try:
         flow = Flow.from_client_secrets_file(
@@ -411,7 +405,22 @@ with st.sidebar:
     except Exception as e:
         flow = None
         st.error("⚠️ web_credentials.json not found. Check Google Cloud setup.")
-
+      
+  # --- ROBUST PERSISTENT LOGIN CHECK ---
+    if "user_creds" not in st.session_state:
+        all_cookies = cookie_controller.getAll()
+        
+        if all_cookies and isinstance(all_cookies, dict):
+            saved_creds = all_cookies.get("driver_user_creds")
+            if saved_creds:
+                st.session_state["user_creds"] = saved_creds
+                st.rerun()
+        
+        # If the component hasn't loaded cookies yet on first pass, force a micro-rerun to catch them
+        elif "cookie_init_done" not in st.session_state:
+            st.session_state["cookie_init_done"] = True
+            st.rerun()
+  
     # 2. Catch the Redirect Code from Google
     if "code" in st.query_params and "state" in st.query_params and flow:
         try:
