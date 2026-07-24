@@ -81,7 +81,7 @@ from streamlit_cookies_controller import CookieController
 # Constants
 # =============================================================================
 
-DEFAULT_MODEL = "gemini-2.5-flash"  # Swap freely — e.g. "gemini-3-flash-preview"
+DEFAULT_MODEL = "gemini-3.5-flash"  # Swap freely — e.g. "gemini-3-flash-preview"
                                      # or "gemini-3.5-flash" if your key has access.
                                      # This is the "Swappable Reasoning Engine".
 
@@ -572,7 +572,7 @@ if user_input:
         try:
             # 1. INTENT ROUTING
             with st.spinner("Analyzing intent..."):
-                router_llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash-lite", api_key=google_api_key)
+                router_llm = ChatGoogleGenerativeAI(model="gemini-3.1-flash-lite", api_key=google_api_key)
                 structured_router = router_llm.with_structured_output(TaskIntent)
                 intent_result = structured_router.invoke(
                     f"Analyze this user request. Decide task_type (web, drive, hybrid, general) and complexity (low, high): {user_input}"
@@ -585,13 +585,13 @@ if user_input:
             quota_conn = setup_quota_db(checkpoint_db_path)
             pro_usage = get_pro_usage(quota_conn)
             
-            active_model = "gemini-2.5-flash"
+            active_model = "gemini-3.5-flash"
             dynamic_web_results = 3
             dynamic_drive_results = 5
             
             if preferred_mode == "Force: High-Power (Pro)" or (preferred_mode == "Auto-Detect (Recommended)" and (complexity == "high" or task_type == "hybrid")):
                 if pro_usage < 5:
-                    active_model = "gemini-1.5-pro"
+                    active_model = "gemini-2.5-pro"
                     dynamic_web_results = 8
                     dynamic_drive_results = 15
                     new_usage = increment_pro_usage(quota_conn)
