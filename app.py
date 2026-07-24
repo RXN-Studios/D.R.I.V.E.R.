@@ -217,6 +217,11 @@ def get_checkpointer(db_path: str) -> SqliteSaver:
     checkpointer.setup()  # idempotent — creates tables on first run only
     return checkpointer
 
+@st.cache_resource
+def get_oauth_cache():
+    # This dictionary lives on the server and survives browser redirects
+    return {}
+
 # =============================================================================
 # Intent Routing & Quota Tracking
 # =============================================================================
@@ -399,11 +404,15 @@ with st.sidebar:
         st.error("⚠️ web_credentials.json not found. Check Google Cloud setup.")
 
     # 2. Catch the Redirect Code from Google
-    if "code" in st.query_params and flow:
+    if "code" in st.query_params and "state" in st.query_params and flow:
         try:
-            if "code_verifier" in st.session_state:
-                flow.code_verifier = st.session_state["code_verifier"]
-          
+            # Retrieve the server-side cached verifier using Google's 'state' parameter
+            state = st.query_params["state"]
+            oauth_cache = get_oauth_cache()
+            
+            if state in oauth_cache:
+                flow.code_verifier = oauth_cache[state]
+
             flow.fetch_token(code=st.query_params["code"])
             st.session_state["user_creds"] = flow.credentials.to_json()
             st.query_params.clear()  # Clean the URL
@@ -433,8 +442,12 @@ with st.sidebar:
             st.rerun()
     else:
         if flow:
-            auth_url, _ = flow.authorization_url(prompt='consent')
-            st.session_state["code_verifier"] = flow.code_verifier
+            auth_url, state = flow.authorization_url(prompt='consent')
+            
+            # Save the verifier in the SERVER cache using the state as the key
+            oauth_cache = get_oauth_cache()
+            oauth_cache[state] = flow.code_verifier
+            
             st.link_button("🌐 Sign in with Google", auth_url, use_container_width=True)
           
     # Basic Settings
