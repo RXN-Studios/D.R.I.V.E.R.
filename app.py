@@ -245,7 +245,51 @@ def increment_pro_usage(conn):
         conn.execute("UPDATE user_quotas SET pro_uses = ? WHERE date = ?", (usage + 1, today,))
     conn.commit()
     return usage + 1
+  
+# =============================================================================
+# Chat History Tracking Helpers
+# =============================================================================
+def save_thread_title(db_path: str, thread_id: str, title: str):
+    conn = sqlite3.connect(db_path, check_same_thread=False)
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS conversation_threads (thread_id TEXT PRIMARY KEY, title TEXT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)"
+    )
+    cur = conn.execute("SELECT title FROM conversation_threads WHERE thread_id = ?", (thread_id,))
+    if not cur.fetchone():
+        conn.execute("INSERT INTO conversation_threads (thread_id, title) VALUES (?, ?)", (thread_id, title))
+        conn.commit()
+    conn.close()
 
+def get_saved_threads(db_path: str):
+    if not os.path.exists(db_path):
+        return []
+    conn = sqlite3.connect(db_path, check_same_thread=False)
+    try:
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS conversation_threads (thread_id TEXT PRIMARY KEY, title TEXT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)"
+        )
+        cur = conn.execute("SELECT thread_id, title FROM conversation_threads ORDER BY rowid DESC")
+        return cur.fetchall()
+    except Exception:
+        return []
+    finally:
+        conn.close()
+
+def load_messages_from_checkpoint(checkpointer, thread_id: str):
+    config = {"configurable": {"thread_id": thread_id}}
+    checkpoint_tuple = checkpointer.get(config)
+    if not checkpoint_tuple or not checkpoint_tuple.checkpoint:
+        return []
+    messages = checkpoint_tuple.checkpoint.get("channel_values", {}).get("messages", [])
+    ui_messages = []
+    for m in messages:
+        if isinstance(m, HumanMessage):
+            ui_messages.append({"role": "user", "content": extract_text(m.content)})
+        elif isinstance(m, AIMessage):
+            txt = extract_text(m.content)
+            if txt.strip():
+                ui_messages.append({"role": "assistant", "content": txt})
+    return ui_messages
 # =============================================================================
 # Streamlit page setup
 # =============================================================================
@@ -408,6 +452,21 @@ with st.sidebar:
         st.session_state.messages = []
         st.session_state.last_msg_count = 0
         st.rerun()
+      
+    st.divider()
+    st.subheader("💬 Chat History")
+    saved_threads = get_saved_threads("driver_checkpoints.sqlite")
+    if saved_threads:
+        for t_id, t_title in saved_threads:
+            # Highlight current active conversation
+            button_label = f"▶ {t_title}" if t_id == st.session_state.get("thread_id") else t_title
+            if st.button(button_label, key=f"hist_{t_id}", use_container_width=True):
+                st.session_state.thread_id = t_id
+                st.session_state.messages = load_messages_from_checkpoint(checkpointer, t_id)
+                st.session_state.last_msg_count = len(st.session_state.messages)
+                st.rerun()
+    else:
+        st.caption("No previous chats yet.")
 # -----------------------------------------------------------------------
 # -----------------------------------------------------------------------
 # Guard: make sure we have the minimum required credentials before building
@@ -467,6 +526,8 @@ user_input = st.chat_input("Ask D.R.I.V.E.R. about your Drive or the web...")
 
 if user_input:
     st.session_state.messages.append({"role": "user", "content": user_input})
+    thread_title = user_input[:28] + "..." if len(user_input) > 28 else user_input
+    save_thread_title("driver_checkpoints.sqlite", st.session_state.thread_id, thread_title)
     with st.chat_message("user"):
         st.markdown(user_input)
 
