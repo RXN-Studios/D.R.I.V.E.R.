@@ -432,11 +432,9 @@ with st.sidebar:
         if flow:
             auth_url, _ = flow.authorization_url(prompt='consent')
             st.link_button("🌐 Sign in with Google", auth_url, use_container_width=True)
-
-    st.divider()
-    
+          
     # Basic Settings
-    st.subheader("API Keys")
+    st.subheader("")
     google_api_key = get_secret("GOOGLE_API_KEY")
     tavily_api_key = get_secret("TAVILY_API_KEY")
     if not google_api_key:
@@ -444,7 +442,6 @@ with st.sidebar:
     if not tavily_api_key:
         tavily_api_key = st.text_input("TAVILY_API_KEY", type="password")
 
-    st.divider()
     if st.button("⚙️ Settings & About", use_container_width=True):
         settings_modal()
     if st.button("🔄 New conversation", use_container_width=True):
